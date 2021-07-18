@@ -66,6 +66,56 @@ export type {{.Name}} = {
 }
 {{end}}{{end}}
 
+{{define "react-query"}}{{range .}}
+function useMutationCallback(mutationOptions: {
+  onSuccessFunc?: () => void;
+  onErrorFunc?: (err: unknown) => void;
+}) {
+  const { onSuccessFunc, onErrorFunc } = mutationOptions;
+  return {
+    onError: (err: unknown) => {
+      onErrorFunc && onErrorFunc(err);
+    },
+    // Always refetch after success:
+    onSuccess: () => {
+      onSuccessFunc && onSuccessFunc();
+    },
+  };
+}
+{{ $service := . }}
+{{- range .Methods}}  
+{{- if .ServerStreaming }}
+{{- else }}
+{{- if eq .HTTPMethod "GET"}}
+export function use{{.Name}}(
+  req: {{tsType .Input}},
+  initReq: fm.InitReq,
+  options?: { 
+    queryKey?: ReactQuery.QueryKey;
+    queryOptions?: ReactQuery.UseQueryOptions<{{tsType .Output}}>;
+  },
+) {
+  const queryKey = options?.queryKey ? options.queryKey : "{{.Name}}";
+  return {
+    {{.Name}}QueryKey: queryKey,
+    use{{.Name}}Query: () => ReactQuery.useQuery(queryKey, () => {{$service.Name}}.{{.Name}}(req, initReq), options?.queryOptions),
+  };
+}
+{{ else }}
+export function use{{.Name}}(
+  mutationOptions: { onSuccessFunc?: () => void; onErrorFunc?: (err: unknown) => void },
+  initReq: fm.InitReq,
+) {
+  return ReactQuery.useMutation(
+    (req: {{tsType .Input}}) => {{$service.Name}}.{{.Name}}(req, initReq),
+    useMutationCallback({ ...mutationOptions }),
+  );
+}
+{{end}}
+{{- end}}
+{{- end}}
+{{end}}{{end}}
+
 {{- if not .EnableStylingCheck}}
 /* eslint-disable */
 // @ts-nocheck
@@ -73,7 +123,10 @@ export type {{.Name}} = {
 /*
 * This file is a generated Typescript file for GRPC Gateway, DO NOT MODIFY
 */
-{{if .Dependencies}}{{- include "dependencies" .StableDependencies -}}{{end}}
+{{if .Dependencies}}{{- include "dependencies" .StableDependencies -}}{{end -}}
+{{if .Services}}import * as ReactQuery from "react-query";
+{{end}}
+
 {{- if .NeedsOneOfSupport}}
 type Absent<T, K extends keyof T> = { [k in Exclude<keyof T, K>]?: undefined };
 type OneOf<T> =
@@ -87,6 +140,7 @@ type OneOf<T> =
 {{- if .Enums}}{{include "enums" .Enums}}{{end}}
 {{- if .Messages}}{{include "messages" .Messages}}{{end}}
 {{- if .Services}}{{include "services" .Services}}{{end}}
+{{- if .Services}}{{include "react-query" .Services}}{{end}}
 `
 
 const fetchTmpl = `
