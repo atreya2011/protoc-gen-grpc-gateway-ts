@@ -67,20 +67,10 @@ export type {{.Name}} = {
 {{end}}{{end}}
 
 {{define "react-query"}}{{range .}}
-function useMutationCallback(mutationOptions: {
-  onSuccessFunc?: () => void;
-  onErrorFunc?: (err: unknown) => void;
-}) {
-  const { onSuccessFunc, onErrorFunc } = mutationOptions;
-  return {
-    onError: (err: unknown) => {
-      onErrorFunc && onErrorFunc(err);
-    },
-    // Always refetch after success:
-    onSuccess: () => {
-      onSuccessFunc && onSuccessFunc();
-    },
-  };
+type GRPCStatus = {
+  code: number;
+  message: string;
+  details: unknown;
 }
 {{ $service := . }}
 {{- range .Methods}}  
@@ -89,26 +79,34 @@ function useMutationCallback(mutationOptions: {
 {{- if eq .HTTPMethod "GET"}}
 export function use{{.Name}}(
   req: {{tsType .Input}},
-  initReq: fm.InitReq,
   options?: { 
-    queryKey?: ReactQuery.QueryKey;
-    queryOptions?: ReactQuery.UseQueryOptions<{{tsType .Output}}>;
+    fetchOptions?: fm.InitReq;
+    queryOptions?: ReactQuery.UseQueryOptions<{{tsType .Output}}, GRPCStatus>;
   },
 ) {
-  const queryKey = options?.queryKey ? options.queryKey : "{{.Name}}";
+  const { queryOptions, fetchOptions } = options || {};
+  let queryKey = queryOptions?.queryKey;
+  if (queryKey) {
+    typeof queryKey === "string" ? ["{{.Name}}", queryKey] : ["{{.Name}}", ...queryKey];
+  } else {
+    queryKey = ["{{.Name}}"];
+  }
   return {
     {{.Name}}QueryKey: queryKey,
-    use{{.Name}}Query: () => ReactQuery.useQuery(queryKey, () => {{$service.Name}}.{{.Name}}(req, initReq), options?.queryOptions),
+    ...ReactQuery.useQuery(queryKey, () => {{$service.Name}}.{{.Name}}(req, fetchOptions), queryOptions),
   };
 }
 {{ else }}
 export function use{{.Name}}(
-  mutationOptions: { onSuccessFunc?: () => void; onErrorFunc?: (err: unknown) => void },
-  initReq: fm.InitReq,
+  options?: { 
+    fetchOptions?: fm.InitReq;
+    mutationOptions?: ReactQuery.MutationOptions<{{tsType .Output}}, GRPCStatus, {{tsType .Input}}>;
+  },
 ) {
-  return ReactQuery.useMutation(
-    (req: {{tsType .Input}}) => {{$service.Name}}.{{.Name}}(req, initReq),
-    useMutationCallback({ ...mutationOptions }),
+  const { mutationOptions, fetchOptions } = options || {}
+  return ReactQuery.useMutation<{{tsType .Output}}, GRPCStatus, {{tsType .Input}}>(
+    (req: {{tsType .Input}}) => {{$service.Name}}.{{.Name}}(req, fetchOptions),
+    mutationOptions,
   );
 }
 {{end}}
