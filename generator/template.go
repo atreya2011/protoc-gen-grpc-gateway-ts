@@ -67,7 +67,7 @@ export type {{.Name}} = {
 {{end}}{{end}}
 
 {{define "react-query"}}{{range .}}
-type GRPCStatus = {
+export type GRPCStatus = {
   code: number;
   message: string;
   details: unknown;
